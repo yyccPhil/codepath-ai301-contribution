@@ -38,6 +38,8 @@ The step invokes `tox run -e docs-py3xx-docs`, which matches no real environment
 
 ### Environment Setup
 
+- **Branch link:** https://github.com/yyccPhil/pydata-sphinx-theme/tree/yyccphil/fix-prerelease-tox-env-name
+
 The project ships with a GitHub Codespaces / Dev Container configuration, so I opened it as a Codespace rather than installing dependencies on my local machine. This gave me a pre-configured Debian 11 container with Python 3.10 and tox already available. Two notable challenges came up during setup:
 
 1. **Git credential helper mismatch.** While following early setup steps from a generic tutorial, I configured `credential.helper=osxkeychain` globally. This is a macOS-only helper and is meaningless in a Linux Codespace; it broke `git push` with `fatal: could not read Username for 'https://github.com': terminal prompts disabled`. I fixed it by running `git config --global --unset-all credential.helper`, which restored the VS Code / Codespaces-managed credential helper that was already configured at the system level. Push then worked without any further setup.
@@ -79,7 +81,6 @@ These steps demonstrate that the environment name used in `prerelease.yml` (`doc
 
 ### Reproduction Evidence
 
-- **Branch link:** https://github.com/yyccPhil/pydata-sphinx-theme/tree/yyccphil/fix-prerelease-tox-env-name
 - **Key reproduction output (excerpted):**
 
   `tox config -e py311-docs` (real environment):
