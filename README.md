@@ -3,7 +3,8 @@
 **Contribution Number:** 1  
 **Student:** Yuan Yuan  
 **Issue:** https://github.com/pydata/pydata-sphinx-theme/issues/2418  
-**Status:** Phase II Complete
+**Pull Request:** https://github.com/pydata/pydata-sphinx-theme/pull/2421  
+**Status:** Phase III Complete
 
 ---
 
@@ -43,7 +44,7 @@ The step invokes `tox run -e docs-py3xx-docs`, which matches no real environment
 The project ships with a GitHub Codespaces / Dev Container configuration, so I opened it as a Codespace rather than installing dependencies on my local machine. This gave me a pre-configured Debian 11 container with Python 3.10 and tox already available. Two notable challenges came up during setup:
 
 1. **Git credential helper mismatch.** While following early setup steps from a generic tutorial, I configured `credential.helper=osxkeychain` globally. This is a macOS-only helper and is meaningless in a Linux Codespace; it broke `git push` with `fatal: could not read Username for 'https://github.com': terminal prompts disabled`. I fixed it by running `git config --global --unset-all credential.helper`, which restored the VS Code / Codespaces-managed credential helper that was already configured at the system level. Push then worked without any further setup.
-2. **Python version mismatch with the project's tox envs.** The Codespace ships with Python 3.10, but the project's `docs` tox envs are defined for Python 3.11 and 3.14 only (`[testenv:py3{11,14}{,-sphinx82}-docs]`). This meant I could not run the docs build end-to-end locally. For this particular issue — a CI configuration fix — this is not a blocker: the bug is about whether a tox environment name is defined at all, which is fully verifiable from `tox list`, `tox config`, and the `tox.ini` source itself, without ever needing to execute the build. The end-to-end build will be exercised by CI once the PR is opened.
+2. **Python version mismatch with the project's tox envs.** The Codespace ships with Python 3.10, but the project's `docs` tox envs are defined for Python 3.11 and 3.14 only (`[testenv:py3{11,14}{,-sphinx82}-docs]`). This meant I could not run the docs build end-to-end on the Codespace directly. For this particular issue — a CI configuration fix — this was not a blocker: the bug is about whether a tox environment name is defined at all, which is fully verifiable from `tox list`, `tox config`, and the `tox.ini` source itself, without ever needing to execute the build. End-to-end verification was performed separately by triggering the workflow on GitHub Actions runners (see Testing Strategy below).
 
 ### Steps to Reproduce
 
@@ -121,23 +122,23 @@ Using UMPIRE framework (adapted):
 
 **Understand:** See § Understanding the Issue above. In short: `prerelease.yml` invokes a tox environment name that is not defined in `tox.ini`, so the step runs a no-op virtualenv and reports success without building docs.
 
-**Match:** Other workflow steps in the same repository that invoke tox environments (e.g., other steps within `prerelease.yml` itself, as well as `tests.yml`) use the un-prefixed `pyXXX-...` form. The fix should make this step consistent with that established pattern.
+**Match:** Other workflow steps in the same repository that invoke tox environments use the un-prefixed `pyXXX-...` form (e.g., the "Run tests" step in the same `prerelease.yml` uses `pyXXX-tests-no-cov`). The fix should make this step consistent with that established pattern.
 
 **Plan:**
 1. Open `.github/workflows/prerelease.yml`.
 2. Locate the step named "Build PST docs and check for warning".
-3. In its `run:` block (or `env`/`matrix` reference, depending on how the Python version is interpolated), change the tox env argument from `docs-py${{ matrix.python-version }}-docs` (or equivalent) to `py${{ matrix.python-version }}-docs`.
-4. Cross-check the matrix definition: `tox.ini` only defines `docs` environments for Python 3.11 and 3.14. If the workflow's matrix includes 3.12 or 3.13, those Python versions will fail with "environment not defined" after this fix — that is a separate, pre-existing problem and is out of scope for this PR, but should be noted in the PR description so maintainers are aware.
-5. Verify the change does not introduce YAML syntax errors.
+3. Drop the `docs-` prefix from the tox env argument so the step calls `py$(echo ${{ matrix.python-version }} | tr -d .)-docs` (the real env defined at `tox.ini:111`).
+4. Cross-check the matrix definition: `tox.ini` only defines `docs` environments for Python 3.11 and 3.14. The workflow's matrix is `["3.11", "3.14"]`, which matches exactly — no matrix change needed.
+5. Update the adjacent example comment so it matches the corrected form.
+6. Verify the YAML still parses and confirm with `grep -rn "docs-py" .github/` that the typo does not appear anywhere else in the workflows directory.
 
-**Implement:** Branch `yyccphil/fix-prerelease-tox-env-name` in https://github.com/yyccPhil/pydata-sphinx-theme. Commit will be added in Phase III.
+**Implement:** Branch `yyccphil/fix-prerelease-tox-env-name`. Single commit [`caaa89a`](https://github.com/pydata/pydata-sphinx-theme/pull/2421/commits/caaa89a) on PR [#2421](https://github.com/pydata/pydata-sphinx-theme/pull/2421). Two lines changed: the `tox run -e` argument and the adjacent example comment.
 
-**Review:** Before opening a PR I will (a) re-read `CONTRIBUTING.md` and the project's contributor guide at https://pydata-sphinx-theme.readthedocs.io/en/stable/community/ for any conventions specific to CI changes; (b) check recent merged PRs labeled `tag: CI` for the project's expected commit message and PR title format (the project appears to use prefixes like `CI -`, `BUG -`, `ENH -`); (c) confirm the diff is minimal and touches only `.github/workflows/prerelease.yml`.
+**Review:** I checked the project's [contributor guide](https://pydata-sphinx-theme.readthedocs.io/en/stable/community/) and recent merged PRs to match the project's style. The repo does not enforce a strict prefix convention (`BUG -`, `CI -`, etc.); it uses natural-English imperative titles, which I followed (`Fix incorrect tox env name in prerelease docs build step`). Pre-commit hooks (ruff, prettier, doc8, nbstripout, etc.) ran automatically on commit and all checks passed.
 
-**Evaluate:** Local verification is limited because the Codespace lacks Python 3.11/3.14. The plan is therefore:
-1. **Static verification locally:** confirm the YAML parses (`python -c "import yaml; yaml.safe_load(open('.github/workflows/prerelease.yml'))"`), and confirm that `tox config -e py311-docs` resolves to a real environment with non-empty `commands` (already done in reproduction).
-2. **End-to-end verification via CI:** after pushing the branch and opening a PR, observe that the "Build PST docs and check for warning" step now runs `sphinx-build` and takes a realistic amount of time (minutes, not seconds). The original issue reporter's output shows what a real run looks like (`Running Sphinx v9.0.4 … Rendering pydata_sphinx_theme …`); the post-fix CI run should look similar.
-3. **Regression check:** confirm no other workflow steps reference the old `docs-pyXXX-docs` form (a project-wide `grep` for `docs-py` in `.github/workflows/`).
+**Evaluate:** Verification was done in two layers, both passed:
+1. **Static verification locally:** `tox config -e py311-docs` resolves to a real environment with populated `description` and `depends`; `tox config -e docs-py311-docs` returns an empty environment. After applying the fix, `grep -rn "docs-py" .github/` returns no matches.
+2. **End-to-end verification on GitHub Actions runners:** I temporarily bypassed the `repository_owner == 'pydata'` guard on two short-lived branches and triggered the workflow manually for both the broken and fixed code. Before the fix, the "Build PST docs" step completed in ~22s with `OK` but no `sphinx-build` invocation. After the fix, the same step ran `sphinx-build -b html docs/ docs/_build/html -nTv -w warnings.txt`, launched Sphinx 9.0.4, and rendered the project docs as expected. Screenshots are attached to the PR description.
 
 ---
 
@@ -145,50 +146,66 @@ Using UMPIRE framework (adapted):
 
 ### Unit Tests
 
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
+Not applicable. The change is a one-line CI configuration fix, not application code. There is no meaningful unit test for "the workflow file references a tox env name that exists in `tox.ini`."
 
 ### Integration Tests
 
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
+Not applicable. The "real" integration test for this fix is the GitHub Actions workflow itself running end-to-end.
 
 ### Manual Testing
 
-[What you tested manually and results]
+Two layers of verification were performed:
+
+**1. Static verification (local, in Codespace).**
+
+- `tox list` does not include any `docs-pyXXX-docs` entry.
+- `grep -rn "docs-py" .github/` initially returned only the two lines being modified, confirming the typo is localized to a single file. After the fix, the same command returns no matches.
+- `tox config -e py311-docs` resolves to a real environment with `description = build the documentation and place in docs/_build/html` and `depends = compile-assets, i18n-compile`. `tox config -e docs-py311-docs` resolves to an empty environment with no description and no depends.
+- `git diff` shows exactly two lines changed (the `run:` argument and the adjacent comment).
+
+**2. End-to-end verification on GitHub Actions runners.**
+
+The Codespace ships with Python 3.10, so the actual docs build cannot be executed locally (the relevant tox envs require Python 3.11 / 3.14). To verify the fix in a realistic environment, I temporarily disabled the `if: github.repository_owner == 'pydata'` guard on two short-lived fork branches and triggered the workflow manually on each:
+
+- **Before the fix** (`docs-py311-docs`): the "Build PST docs and check for warnings" step completed in ~22 seconds with `docs-py311-docs: OK (21.31 seconds)` / `congratulations :)`. `sphinx-build` was never invoked anywhere in the log.
+- **After the fix** (`py311-docs`): the same step ran the real command `sphinx-build -b html docs/ docs/_build/html -nTv -w warnings.txt`, launched `Running Sphinx v9.0.4`, and rendered the project's documentation (`[AutoAPI] Reading files... [12%] → [100%]`, etc.). Step duration was in the minutes range, as expected for a real docs build.
+
+Screenshots of both runs are attached to the PR description. The two temporary verification branches were deleted after capturing evidence.
 
 ---
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Week 1 Progress (Phase II → Phase III)
 
-[What you built this week, challenges faced, decisions made]
+After completing Phase II's reproduction and UMPIRE plan, the actual code change was straightforward: one string substitution in one file. The rest of Phase III's effort went into verification and infrastructure rather than implementation. Key non-trivial decisions and challenges:
 
-### Week [Y] Progress
-
-[Continue documenting as you work]
+- **Authentication & signing on Codespaces.** A stale `credential.helper=osxkeychain` setting (inherited from a previous local Mac configuration synced into the Codespace) broke `git push` initially with `fatal: could not read Username for 'https://github.com'`. Resolved by unsetting the global config so the Codespaces-managed helper could take over. A separate symptom — `failed to write commit object` with a missing SSH signing key file — was another synced-config artifact from my Mac, worked around by setting `commit.gpgsign=false` locally on the Codespace. Long term I have a signing key configured on GitHub, so future commits made from the local Mac will be signed automatically.
+- **End-to-end verification on a fork.** The `prerelease.yml` workflow has an `if: github.repository_owner == 'pydata'` guard that prevents it from running on forks via PR triggers. To produce reproducible before/after evidence I created two short-lived branches (`verify-prerelease-broken`, `verify-prerelease-fix`) that temporarily removed this guard and triggered the workflow via `workflow_dispatch`. This produced the screenshots referenced in the PR description. The branches were deleted after capturing evidence to keep the fork clean.
+- **Scope discipline.** While reading `tox.ini` I noticed `docs` testenv factors are only defined for Python 3.11 and 3.14. If the matrix were ever expanded to 3.12 or 3.13, the fix would still leave those rows failing. I confirmed the current matrix is exactly `["3.11", "3.14"]` and chose not to address broader factor coverage in this PR — bundling unrelated changes makes review harder. Mentioned in the PR description as context for the maintainer.
 
 ### Code Changes
 
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified:** `.github/workflows/prerelease.yml` (2 lines changed: the `tox run -e` argument and the adjacent example comment).
+- **Key commit:** [`caaa89a` — Fix incorrect tox env name in prerelease docs build step](https://github.com/pydata/pydata-sphinx-theme/pull/2421/commits/caaa89a).
+- **Approach decisions:**
+  - Made the smallest possible diff (two lines, one file) over a "while I'm here" cleanup of other CI minor issues.
+  - Kept commit history clean with a single descriptive commit, no amend-and-force-push, no stacked commits.
+  - Followed the project's natural-English imperative commit style (no `BUG -` / `CI -` prefix), matching observed convention in recent merged PRs.
+  - Added end-to-end CI screenshots to the PR description proactively, rather than waiting for the maintainer to ask for verification.
 
 ---
 
 ## Pull Request
 
-**PR Link:** [GitHub PR URL when submitted]
+**PR Link:** https://github.com/pydata/pydata-sphinx-theme/pull/2421
 
-**PR Description:** [Draft or final PR description - much of the content above can be adapted]
+**PR Description:** Includes a summary, the silent-failure explanation, side-by-side `tox config` output for the broken vs. fixed env names, end-to-end before/after CI screenshots, and notes on scope (matrix coverage, single-file change).
 
 **Maintainer Feedback:**
-- [Date]: [Summary of feedback received]
-- [Date]: [How you addressed it]
+- _Awaiting first review._
 
-**Status:** [Awaiting review / Iterating / Approved / Merged]
+**Status:** Draft — awaiting maintainer review.
 
 ---
 
@@ -210,6 +227,7 @@ Using UMPIRE framework (adapted):
 
 ## Resources Used
 
-- [Link to helpful documentation]
-- [Tutorial or Stack Overflow post that helped]
-- [GitHub issues or discussions that helped]
+- [pydata-sphinx-theme contributor guide](https://pydata-sphinx-theme.readthedocs.io/en/stable/community/)
+- [tox documentation — factor-based environment composition](https://tox.wiki/en/latest/config.html)
+- [GitHub Docs — workflow_dispatch event](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_dispatch)
+- Original issue: [pydata-sphinx-theme#2418](https://github.com/pydata/pydata-sphinx-theme/issues/2418)
