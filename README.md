@@ -4,7 +4,7 @@
 **Student:** Yuan Yuan  
 **Issue:** https://github.com/pydata/pydata-sphinx-theme/issues/2418  
 **Pull Request:** https://github.com/pydata/pydata-sphinx-theme/pull/2421  
-**Status:** Phase III Complete
+**Status:** Phase IV Complete — PR merged into `pydata:main`
 
 ---
 
@@ -200,12 +200,17 @@ After completing Phase II's reproduction and UMPIRE plan, the actual code change
 
 **PR Link:** https://github.com/pydata/pydata-sphinx-theme/pull/2421
 
+**Summary of Contribution:** Fixed an incorrect tox environment name in the scheduled prerelease GitHub Actions workflow (`.github/workflows/prerelease.yml`). The "Build PST docs and check for warning" step referenced a non-existent environment (`docs-pyXXX-docs` instead of `pyXXX-docs`), causing it to silently pass in ~4 seconds without ever running `sphinx-build`. The two-line fix drops the erroneous `docs-` prefix so the step invokes the real tox environment and the scheduled workflow once again genuinely builds the docs and checks for Sphinx warnings against pre-release dependencies.
+
 **PR Description:** Includes a summary, the silent-failure explanation, side-by-side `tox config` output for the broken vs. fixed env names, end-to-end before/after CI screenshots, and notes on scope (matrix coverage, single-file change).
 
 **Maintainer Feedback:**
-- _Awaiting first review._
+- Marked the PR as ready for review after completing end-to-end CI verification.
+- Reviewed by collaborator **@Yann-P**, who approved the change without requesting any modifications ("Thank you!").
+- The PR was labeled `tag: CI` and assigned to the **0.20.0** milestone.
+- Merged into `pydata:main` (merge commit `620d9eb`); all 27 CI checks passed.
 
-**Status:** Draft — awaiting maintainer review.
+**Status:** Merged
 
 ---
 
@@ -213,15 +218,24 @@ After completing Phase II's reproduction and UMPIRE plan, the actual code change
 
 ### Technical Skills Gained
 
-[What you learned technically]
+- Learned how tox resolves environment names, including factor-based composition, and — crucially — what tox does when a workflow references an environment that isn't actually defined: instead of erroring out, it silently builds a no-op environment and reports success. That behavior is the entire reason this bug was invisible from the CI's green checkmark.
+- Got hands-on with the anatomy of a GitHub Actions workflow and how its steps wire up to tox environments, matrix definitions, and conditional `if:` guards.
+- Learned to verify a fix at two levels — static inspection (`tox list`, `tox config`, `grep`) plus a real end-to-end CI run where I watched the docs step actually invoke `sphinx-build` — rather than trusting a passing status.
+- Completed the full open-source contribution loop for the first time: fork, branch, reproduce with hard evidence, commit, push, open a PR with a thorough description, and see it reviewed and merged into an upstream project.
 
 ### Challenges Overcome
 
-[What was hard and how you solved it]
+- **Environment config carried over from my local Mac.** Setting up the Codespace surfaced two synced-config problems: a macOS-only `credential.helper=osxkeychain` that broke `git push`, and SSH commit signing pointing at a key file that only existed on my Mac, which broke `git commit`. I diagnosed each from the error messages and resolved them by unsetting the stale global credential helper and disabling commit signing locally for that repo.
+- **Couldn't run the docs build locally.** The Codespace only had Python 3.10, but the docs tox envs require 3.11 / 3.14, so I couldn't execute the build on the Codespace. Rather than treating that as a dead end, I leaned on the project's own CI for end-to-end verification and captured before/after evidence — and explained that reasoning transparently in the PR.
+- **Producing real CI evidence on a fork.** The workflow is guarded to run only on the `pydata` org, so it wouldn't fire on my fork by default. I worked around this with two short-lived branches that temporarily removed the guard and triggered the workflow via `workflow_dispatch`, then deleted them afterward to keep the fork clean.
+- **Resisting scope creep.** I noticed a related gap (docs envs undefined for 3.12 / 3.13) but deliberately kept the PR to the single typo fix and only mentioned the observation as context, so the change stayed easy to review.
 
 ### What I'd Do Differently Next Time
 
-[Reflection on your process]
+- Clean up my global git config (credential helper, signing) before spinning up a fresh cloud dev environment, instead of debugging inherited settings mid-task.
+- Get into the habit of rebasing on upstream at the start of each work session, not only when a conflict forces it.
+- Post standup updates on the recommended cadence throughout the phase rather than catching up near the end.
+- Trust the process a bit more. I over-prepared for multiple rounds of review that, for a small and well-evidenced fix, never came — the PR was approved and merged on the first pass.
 
 ---
 
